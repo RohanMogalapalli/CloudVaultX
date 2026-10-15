@@ -1,0 +1,142 @@
+name: cloudvaultx
+
+# ---------------------------------------------------------------------
+# CloudVaultX — AI-based decentralized cloud storage
+#
+#   postgres     metadata: users, files, chunks, replicas, nodes, metrics
+#   coordinator  API + encryption + chunking + Random Forest placement
+#   node1..node4 independent storage nodes, each with its own volume
+#   frontend     React dashboard served by nginx (proxies /api)
+#
+# Start with:  docker compose up --build
+# UI:          http://localhost:5173        API docs: http://localhost:8000/docs
+# ---------------------------------------------------------------------
+
+x-node-defaults: &node-defaults
+  build:
+    context: ./storage_node
+  restart: unless-stopped
+  networks: [cloudvaultx]
+
+x-node-env: &node-env
+  GUNICORN_WORKERS: "1"
+  CAPACITY_BYTES: ${NODE_CAPACITY_BYTES:-1073741824}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudvaultx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudvaultx}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudvaultx}
+      TZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudvaultx} -d ${POSTGRES_DB:-cloudvaultx}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [cloudvaultx]
+
+  coordinator:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Set ENVIRONMENT=production to refuse booting without MASTER_KEY.
+      # Left as "development" so the stack runs out of the box for a demo.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-cloudvaultx}:${POSTGRES_PASSWORD:-cloudvaultx}@postgres:5432/${POSTGRES_DB:-cloudvaultx}
+      # Generate a real key with:
+      #   python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
+      MASTER_KEY: ${MASTER_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-please-use-a-long-random-value}
+      NODE_TOKEN: ${NODE_TOKEN:-dev-node-token}
+      NODE_URLS: http://node1:9000,http://node2:9000,http://node3:9000,http://node4:9000
+      NODE_CAPACITY_BYTES: ${NODE_CAPACITY_BYTES:-1073741824}
+      CHUNK_SIZE_BYTES: ${CHUNK_SIZE_BYTES:-262144}
+      REPLICATION_FACTOR: ${REPLICATION_FACTOR:-3}
+      MONITOR_ENABLED: ${MONITOR_ENABLED:-true}
+      NODE_POLL_INTERVAL_SECONDS: ${NODE_POLL_INTERVAL_SECONDS:-10}
+      NODE_OFFLINE_AFTER_FAILURES: ${NODE_OFFLINE_AFTER_FAILURES:-2}
+      AUTO_REPAIR_ENABLED: ${AUTO_REPAIR_ENABLED:-true}
+      RECONCILE_ENABLED: ${RECONCILE_ENABLED:-true}
+      RECONCILE_INTERVAL_SECONDS: ${RECONCILE_INTERVAL_SECONDS:-60}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      AUTO_TRAIN_MODEL: ${AUTO_TRAIN_MODEL:-true}
+      ML_WEIGHT: ${ML_WEIGHT:-0.7}
+      MODEL_PATH: /app/data/model/node_selector.joblib
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - model_data:/app/data
+    ports:
+      - "${COORDINATOR_PORT:-8000}:8000"
+    networks: [cloudvaultx]
+
+  node1:
+    <<: *node-defaults
+    environment:
+      <<: *node-env
+      NODE_NAME: node1
+      DATA_DIR: /data
+      SHARED_TOKEN: ${NODE_TOKEN:-dev-node-token}
+    volumes:
+      - node1_data:/data
+
+  node2:
+    <<: *node-defaults
+    environment:
+      <<: *node-env
+      NODE_NAME: node2
+      DATA_DIR: /data
+      SHARED_TOKEN: ${NODE_TOKEN:-dev-node-token}
+    volumes:
+      - node2_data:/data
+
+  node3:
+    <<: *node-defaults
+    environment:
+      <<: *node-env
+      NODE_NAME: node3
+      DATA_DIR: /data
+      SHARED_TOKEN: ${NODE_TOKEN:-dev-node-token}
+    volumes:
+      - node3_data:/data
+
+  node4:
+    <<: *node-defaults
+    environment:
+      <<: *node-env
+      NODE_NAME: node4
+      DATA_DIR: /data
+      SHARED_TOKEN: ${NODE_TOKEN:-dev-node-token}
+    volumes:
+      - node4_data:/data
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    networks: [cloudvaultx]
+
+volumes:
+  pgdata:
+  model_data:
+  node1_data:
+  node2_data:
+  node3_data:
+  node4_data:
+
+networks:
+  cloudvaultx:
+    driver: bridge

@@ -1,0 +1,3 @@
+"""CloudVaultX storage node service."""
+
+__version__ = "1.0.0"

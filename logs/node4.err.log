@@ -1,0 +1,9 @@
+2026-10-06 22:36:12,563 [INFO] Storage node 'node4' ready | data_dir=C:\projects\CloudVaultX\node_data\n4/chunks capacity=1.00 GiB
+INFO:     Started server process [7988]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:9104 (Press CTRL+C to quit)
+2026-10-06 22:40:13,072 [INFO] Stored chunk 1/0 (65564 bytes)
+2026-10-06 22:40:13,155 [INFO] Stored chunk 1/1 (65564 bytes)
+2026-10-06 22:40:13,267 [INFO] Stored chunk 1/2 (65564 bytes)
+2026-10-06 22:40:13,439 [INFO] Stored chunk 1/4 (65564 bytes)
